@@ -1,10 +1,11 @@
 # Student agent: Add your own agent here
+import time
 from copy import deepcopy
+
+import numpy as np
 
 from agents.agent import Agent
 from store import register_agent
-import time
-import numpy as np
 import sys
 
 
@@ -33,19 +34,23 @@ class StudentAgent(Agent):
         - my_pos: a tuple of (x, y)
         - adv_pos: a tuple of (x, y)
         - max_step: an integer
+
         You should return a tuple of ((x, y), dir),
         where (x, y) is the next position of your agent and dir is the direction of the wall
         you want to put on.
+
         Please check the sample implementation in agents/random_agent.py or agents/human_agent.py for more details.
         """
         # dummy return
         dim = len(chess_board[0])
         M = Monte(chess_board, my_pos, adv_pos, max_step)
         steps = M.get_all_steps(chess_board, my_pos, adv_pos, max_step, dim)
-        print(steps)
+        #print(steps)
         my_pos, direction = M.MTCL(chess_board, my_pos, adv_pos, max_step, steps)
+
         # return my_pos, self.dir_map["u"]
         return my_pos, direction
+
 
 class Monte:
     def __init__(self, chess_board, my_pos, adv_pos, max_step):
@@ -68,57 +73,95 @@ class Monte:
         }
 
     def MTCL(self, chess_board, my_pos, adv_pos, max_step, steps):
+        count = 0
+        if count==0:
+            sec = 20
+        else:
+            sec = 1.95
         dict = {}
         start_time = time.time()
-        sec = 1.95
-        while True:
-            cur = time.time()
-            end = cur-start_time
-            if(end>sec):
-                break
-            for move in steps:
-                print(move)
-                board_copy = deepcopy(chess_board)
-                r, c, dir = move
-                self.set_barrier(board_copy, r, c, dir)
-                S = self.run_simulation(board_copy, (r, c), adv_pos, max_step)
-                move = ((r, c), dir)
-                dict[move] = S
+        #sec = 1.95
 
-        choose = dict[max(dict, key=dict.get)]
-        return choose
+        # while True:
+        #     cur = time.time()
+        #     end = cur-start_time
+        #     if(end>sec):
+        #         print("break")
+        #         break
+        for move in steps:
+                #print(move)
+            board_copy = deepcopy(chess_board)
+            r, c, dir = move
+            self.set_barrier(board_copy, r, c, dir)
+
+            S = self.run_simulation(board_copy, (r, c), adv_pos, max_step, count)
+
+            move = ((r, c), dir)
+            dict[move] = S
+            cur = time.time()
+            if count == 0:
+                end = cur-start_time
+            else:
+                end = cur - (start_time+20+2*(count-1))
+            if end > sec:
+                #print("break")
+                break
+
+        #choose = dict[max(dict, key=dict.get)]
+        me_time = time.time()
+        choose = max(dict, key=lambda key: dict[key])
+        posr, dirr = choose
+        end_time = time.time()
+        #print(end_time-start_time)
+        count+=1
+        return posr, dirr
 
     def simulation(self, chess_board, my_pos, adv_pos, turn, max_step):
+
         board = deepcopy(self.chess_board)
+
         board_size = len(board[0])
         res = self.check_endgame(board, my_pos, adv_pos, max_step, board_size)
-        if res[1]==-1:
+
+        if res[1]==-25:
             return -150
         elif res[1]==100:
             return 1000000
+        elif res[1]==-10000:
+            return -1000000
+
+
+
         while not res[0]:
+
             if turn == 0:
                 random = self.random_moves(board, my_pos, adv_pos, max_step)
                 my_pos = random[0]
                 my_dir = random[1]
                 self.set_barrier(board, my_pos[0], my_pos[1], my_dir)
+                #print("here")
                 turn = 1
             elif turn == 1:
                 random = self.random_moves(board, adv_pos, my_pos, max_step)
                 adv_pos = random[0]
                 adv_dir = random[1]
                 self.set_barrier(board, adv_pos[0], adv_pos[1], adv_dir)
+                #print("there")
                 turn = 0
             res = self.check_endgame(board, my_pos, adv_pos, max_step, board_size)
-            print(res[0])
-            print(my_pos)
-            print(adv_pos)
+            #print(res[0])
+            #print(my_pos)
+            #print(adv_pos)
         return res[1]
 
-    def run_simulation(self, chess_board, my_pos, adv_pos, max_step):
+    def run_simulation(self, chess_board, my_pos, adv_pos, max_step,count):
         turn = 0
         sum = 0
-        numSims = 5
+        if count==0:
+            numSims = 20
+        else:
+            numSims = 4
+
         for i in range(numSims):
             board1 = deepcopy(chess_board)
             sum += self.simulation(board1, my_pos, adv_pos, turn, max_step)
@@ -138,12 +181,12 @@ class Monte:
     def set_barrier(self, chess_board, r, c, dir):
         chess_board[int(r), int(c), int(dir)] = True
         move = self.moves[dir]
-        #assert 0 <= r + move[0] < len(chess_board[0]) and len(chess_board[0]) > c + move[1] >= 0
         chess_board[r + move[0], c + move[1], self.opposites[dir]] = True
 
     def check_valid_step(self, chess_board, start_pos, end_pos, barrier_dir, adv_pos, max_step):
         """
         Check if the step the agent takes is valid (reachable and within max steps).
+
         Parameters
         ----------
         start_pos : tuple
@@ -223,11 +266,13 @@ class Monte:
         r, c = my_pos
         while chess_board[r, c, dir]:
             dir = np.random.randint(0, 4)
+
         return my_pos, dir
 
     def check_endgame(self, chess_board, my_pos, adv_pos, max_step, board_size):
         """
         Check if the game ends and compute the current score of the agents.
+
         Returns
         -------
         is_endgame : bool
@@ -271,6 +316,7 @@ class Monte:
         p0_score = list(father.values()).count(p0_r)
         p1_score = list(father.values()).count(p1_r)
         if p0_r == p1_r:
+            #print(1)
             return False, 0
         player_win = None
         win_blocks = -1
