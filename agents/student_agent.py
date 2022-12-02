@@ -55,6 +55,7 @@ class StudentAgent(Agent):
 class Monte:
     def __init__(self, chess_board, my_pos, adv_pos, max_step):
         # self.board_size = board_dim = len(chess_board[0])
+        self.count = 0
         self.max_step = max_step
         self.chess_board = chess_board
         self.my_pos = my_pos
@@ -73,7 +74,18 @@ class Monte:
         }
 
     def MTCL(self, chess_board, my_pos, adv_pos, max_step, steps):
-        count = 0
+        try:
+            if self.__class__.MTCL.called:
+                # do what you have to do with the method
+                print("normal execution")
+                count=1
+        except AttributeError:
+            # do what you have to do with the first call
+            print("first call")
+            count = 0
+            self.__class__.MTCL.called = True
+
+        #count = 0
         if count==0:
             sec = 20
         else:
@@ -88,6 +100,9 @@ class Monte:
         #     if(end>sec):
         #         print("break")
         #         break
+        print("total:")
+        print(len(steps))
+        m = 0
         for move in steps:
                 #print(move)
             board_copy = deepcopy(chess_board)
@@ -99,21 +114,25 @@ class Monte:
             move = ((r, c), dir)
             dict[move] = S
             cur = time.time()
-            if count == 0:
-                end = cur-start_time
-            else:
-                end = cur - (start_time+20+2*(count-1))
+            # if count == 0:
+            #     end = cur-start_time
+            # else:
+            #     end = cur - (start_time+20+2*(count-1))
+            end = cur - start_time
             if end > sec:
                 #print("break")
                 break
+            m+=1
 
         #choose = dict[max(dict, key=dict.get)]
+        print("see:")
+        print(m)
         me_time = time.time()
         choose = max(dict, key=lambda key: dict[key])
         posr, dirr = choose
         end_time = time.time()
-        #print(end_time-start_time)
-        count+=1
+        print(end_time-start_time)
+        #count+=1
         return posr, dirr
 
     def simulation(self, chess_board, my_pos, adv_pos, turn, max_step):
