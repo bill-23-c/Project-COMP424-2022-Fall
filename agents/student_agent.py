@@ -1,9 +1,10 @@
 # Student agent: Add your own agent here
 import time
 from copy import deepcopy
+from random import choice
 
 import numpy as np
-
+from math import sqrt,log
 from agents.agent import Agent
 from store import register_agent
 import sys
@@ -45,12 +46,36 @@ class StudentAgent(Agent):
         dim = len(chess_board[0])
         M = Monte(chess_board, my_pos, adv_pos, max_step)
         steps = M.get_all_steps(chess_board, my_pos, adv_pos, max_step, dim)
+        root = Node(None, None, 0, 0, None)
+        for i in range(0,len(steps)):
+            node = Node(None, root, 0, 0, steps[i])
+            root.children[node.move] = node
+            node.parent = root
+        my_pos, direction = M.UCT_search(root, chess_board, adv_pos, max_step)
         #print(steps)
-        my_pos, direction = M.MTCL(chess_board, my_pos, adv_pos, max_step, steps)
+        #my_pos, direction = M.MTCL(chess_board, my_pos, adv_pos, max_step, steps)
 
         # return my_pos, self.dir_map["u"]
         return my_pos, direction
 
+
+class Node:
+    def __init__(self, child, parent, score, times, move):
+        self.children = {}
+        self.parent = parent
+        self.score = score
+        self.times = times
+        self.move = move
+
+    def cal_UCT(self,explore: float = 0.5):
+        if self.times == 0:
+            return 0 if explore == 0 else float('inf')
+        else:
+            # print(self.score)
+            # print(self.times)
+            # print(self.parent.times)
+
+            return self.score/self.times + explore*sqrt(2)*sqrt(log(self.parent.times)/self.times)
 
 class Monte:
     def __init__(self, chess_board, my_pos, adv_pos, max_step):
@@ -73,67 +98,167 @@ class Monte:
             "l": 3,
         }
 
-    def MTCL(self, chess_board, my_pos, adv_pos, max_step, steps):
+    def UCT_search(self, root, chess_board, adv_pos, max_step):
         try:
-            if self.__class__.MTCL.called:
+            if self.__class__.UCT_search.called:
                 # do what you have to do with the method
-                print("normal execution")
+                #print("normal execution")
                 count=1
         except AttributeError:
             # do what you have to do with the first call
             print("first call")
             count = 0
-            self.__class__.MTCL.called = True
+            self.__class__.UCT_search.called = True
 
         #count = 0
         if count==0:
             sec = 20
         else:
             sec = 1.95
-        dict = {}
         start_time = time.time()
-        #sec = 1.95
+        dict = {}
+        while time.time()-start_time<sec:
+            # print(root.times)
+            # print(root.score)
+            max_nodes = self.UCT_select(root)
+            sum = 0
+            time_sum = 0
+            for node in max_nodes:
+                # print(move)
+                board_copy = deepcopy(chess_board)
+                r, c, dir = node.move
+                self.set_barrier(board_copy, r, c, dir)
 
-        # while True:
-        #     cur = time.time()
-        #     end = cur-start_time
-        #     if(end>sec):
-        #         print("break")
-        #         break
-        print("total:")
-        print(len(steps))
-        m = 0
-        for move in steps:
-                #print(move)
-            board_copy = deepcopy(chess_board)
-            r, c, dir = move
-            self.set_barrier(board_copy, r, c, dir)
+                S = self.run_simulation(board_copy, (r, c), adv_pos, max_step)
+                node.score += S
+                node.times+=1
+                node.parent.score += S
+                node.parent.times += 1
+                #sum+=S
 
-            S = self.run_simulation(board_copy, (r, c), adv_pos, max_step, count)
+                move = ((r, c), dir)
+                dict[move] = node.score
 
-            move = ((r, c), dir)
-            dict[move] = S
-            cur = time.time()
-            # if count == 0:
-            #     end = cur-start_time
-            # else:
-            #     end = cur - (start_time+20+2*(count-1))
-            end = cur - start_time
-            if end > sec:
-                #print("break")
-                break
-            m+=1
+
+                #cur = time.time()
+                # if count == 0:
+                #     end = cur-start_time
+                # else:
+                #     end = cur - (start_time+20+2*(count-1))
+                #end = cur - start_time
+                #if end > sec:
+                    # print("break")
+                 #   break
+                #m += 1
 
         #choose = dict[max(dict, key=dict.get)]
-        print("see:")
-        print(m)
-        me_time = time.time()
-        choose = max(dict, key=lambda key: dict[key])
+            # print("see:")
+            # print(m)
+            #me_time = time.time()
+        print(dict)
+        max_score = -float('inf')
+        choose = ()
+        for i in range(0, len(dict)):
+            score = list(dict.values())[i]
+
+            if score > max_score:
+                max_score = score
+                choose = list(dict)[i]
+
+        #choose = max(dict, key=lambda key: dict[key])
         posr, dirr = choose
         end_time = time.time()
         print(end_time-start_time)
-        #count+=1
+            #count+=1
         return posr, dirr
+
+
+
+    def UCT_select(self,root):
+        #for i in range(0,len(root.children)):
+        children_value = root.children.values()
+        max_value = -float('inf')
+        for i in range(0,len(children_value)):
+            UCT = list(children_value)[i].cal_UCT()
+            if UCT > max_value:
+                max_value = UCT
+
+        #max_value = max(children_value, key = lambda n: n.cal_UCT).cal_UCT
+        max_nodes = [n for n in children_value
+                     if n.cal_UCT() == max_value]
+            # node = choice(max_nodes)
+            # if(node.times == 0):
+            #     return node
+        #print(max_nodes)
+        return max_nodes
+
+
+
+    # def MTCL(self, chess_board, my_pos, adv_pos, max_step, steps):
+    #     try:
+    #         if self.__class__.MTCL.called:
+    #             # do what you have to do with the method
+    #             print("normal execution")
+    #             count=1
+    #     except AttributeError:
+    #         # do what you have to do with the first call
+    #         print("first call")
+    #         count = 0
+    #         self.__class__.MTCL.called = True
+    #
+    #     #count = 0
+    #     if count==0:
+    #         sec = 20
+    #     else:
+    #         sec = 1.95
+    #     dict = {}
+    #     start_time = time.time()
+    #     #sec = 1.95
+    #
+    #     # while True:
+    #     #     cur = time.time()
+    #     #     end = cur-start_time
+    #     #     if(end>sec):
+    #     #         print("break")
+    #     #         break
+    #     print("total:")
+    #     #print(len(steps))
+    #     m = 0
+    #
+    #
+    #
+    #
+    #     for move in steps:
+    #             #print(move)
+    #         board_copy = deepcopy(chess_board)
+    #         r, c, dir = move
+    #         self.set_barrier(board_copy, r, c, dir)
+    #
+    #         S = self.run_simulation(board_copy, (r, c), adv_pos, max_step, count)
+    #
+    #         move = ((r, c), dir)
+    #         dict[move] = S
+    #         cur = time.time()
+    #         # if count == 0:
+    #         #     end = cur-start_time
+    #         # else:
+    #         #     end = cur - (start_time+20+2*(count-1))
+    #         end = cur - start_time
+    #         if end > sec:
+    #             #print("break")
+    #             break
+    #         m+=1
+    #
+    #     #choose = dict[max(dict, key=dict.get)]
+    #     print("see:")
+    #     print(m)
+    #     me_time = time.time()
+    #     choose = max(dict, key=lambda key: dict[key])
+    #     posr, dirr = choose
+    #     end_time = time.time()
+    #     print(end_time-start_time)
+    #     #count+=1
+    #     return posr, dirr
 
     def simulation(self, chess_board, my_pos, adv_pos, turn, max_step):
 
@@ -142,12 +267,12 @@ class Monte:
         board_size = len(board[0])
         res = self.check_endgame(board, my_pos, adv_pos, max_step, board_size)
 
-        if res[1]==-25:
-            return -150
-        elif res[1]==100:
-            return 1000000
-        elif res[1]==-10000:
-            return -1000000
+        # if res[1]==-25:
+        #     return -150
+        # elif res[1]==100:
+        #     return 1000000
+        # elif res[1]==-10000:
+        #     return -1000000
 
 
 
@@ -173,13 +298,14 @@ class Monte:
             #print(adv_pos)
         return res[1]
 
-    def run_simulation(self, chess_board, my_pos, adv_pos, max_step,count):
+    def run_simulation(self, chess_board, my_pos, adv_pos, max_step):
         turn = 0
         sum = 0
-        if count==0:
-            numSims = 20
-        else:
-            numSims = 4
+        # if count==0:
+        #     numSims = 20
+        # else:
+        #     numSims = 4
+        numSims = 1
 
         for i in range(numSims):
             board1 = deepcopy(chess_board)
@@ -347,9 +473,9 @@ class Monte:
             win_blocks = p1_score
         else:
             player_win = -1  # Tie
-            return True, -25
+            return True, 0
 
         if (p0_score - p1_score) < 0:
-            return True, -10000
+            return True, 0
         else:
-            return True, 100
+            return True, 1
