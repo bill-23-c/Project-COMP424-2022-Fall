@@ -19,6 +19,7 @@ class StudentAgent(Agent):
 
     def __init__(self):
         super(StudentAgent, self).__init__()
+        self.count = 0
         self.name = "StudentAgent"
         self.dir_map = {
             "u": 0,
@@ -51,7 +52,8 @@ class StudentAgent(Agent):
             node = Node(None, root, 0, 0, steps[i])
             root.children[node.move] = node
             node.parent = root
-        my_pos, direction = M.UCT_search(root, chess_board, adv_pos, max_step)
+        my_pos, direction = M.UCT_search(root, chess_board, adv_pos, max_step,self.count)
+        self.count = 1
         #print(steps)
         #my_pos, direction = M.MTCL(chess_board, my_pos, adv_pos, max_step, steps)
 
@@ -98,23 +100,26 @@ class Monte:
             "l": 3,
         }
 
-    def UCT_search(self, root, chess_board, adv_pos, max_step):
-        try:
-            if self.__class__.UCT_search.called:
-                # do what you have to do with the method
-                #print("normal execution")
-                count=1
-        except AttributeError:
-            # do what you have to do with the first call
-            print("first call")
-            count = 0
-            self.__class__.UCT_search.called = True
+    def UCT_search(self, root, chess_board, adv_pos, max_step, count):
+        # try:
+        #     if self.__class__.UCT_search.called:
+        #         # do what you have to do with the method
+        #         #print("normal execution")
+        #         count=1
+        # except AttributeError:
+        #     # do what you have to do with the first call
+        #     print("first call")
+        #     count = 0
+        #     self.__class__.UCT_search.called = True
 
         #count = 0
         if count==0:
             sec = 20
         else:
             sec = 1.95
+        if(count==0):
+            print("first move")
+
         start_time = time.time()
         dict = {}
         while time.time()-start_time<sec:
@@ -262,7 +267,7 @@ class Monte:
 
     def simulation(self, chess_board, my_pos, adv_pos, turn, max_step):
 
-        board = deepcopy(self.chess_board)
+        board = deepcopy(chess_board)
 
         board_size = len(board[0])
         res = self.check_endgame(board, my_pos, adv_pos, max_step, board_size)
@@ -434,6 +439,9 @@ class Monte:
                 father[(r, c)] = (r, c)
 
         def find(pos):
+            print(board_size)
+            print("fa pos", father[pos])
+            print("pos", pos)
             if father[pos] != pos:
                 father[pos] = find(father[pos])
             return father[pos]
