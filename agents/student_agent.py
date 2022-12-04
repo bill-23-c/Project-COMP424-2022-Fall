@@ -59,16 +59,37 @@ class StudentAgent(Agent):
         #
         # # return my_pos, self.dir_map["u"]
         # return my_pos, direction
+        #
         if self.tree == None:
             state = State(chess_board, my_pos, adv_pos, max_step, 0)
             self.tree = UctMctsAgent(state)
             self.tree.search(20)
-            return self.tree.best_move()
+            pos, dire = self.tree.best_move()
+            self.tree.root_state.play((pos, dire))
+            self.tree.root = self.tree.root.children[(pos,dire)]
+            return pos, dire
         else:
-            state = State(chess_board, my_pos, adv_pos, max_step, 0)
-            self.tree.set_gamestate(state)
-            self.tree.search(2)
-            return self.tree.best_move()
+            d = -1
+            for i in range(4):
+                if self.tree.root_state.chess_board[adv_pos[0]][adv_pos[1]][i] != chess_board[adv_pos[0]][adv_pos[1]][i]:
+                    d = i
+                    break
+            if d == -1:
+                print("impossible")
+            else:
+                if self.tree.root.children.get((adv_pos, d)) == None:
+                    state = State(chess_board,my_pos,adv_pos,max_step,0)
+                    self.tree.set_gamestate(state)
+                    self.tree.search(2)
+                    pos, dire = self.tree.best_move()
+                    self.tree.root_state.play((pos, dire))
+                    self.tree.root = self.tree.root.children[(pos, dire)]
+                    return pos, dire
+                else:
+                    self.tree.root_state.play((my_pos,d))
+                    self.tree.root = self.tree.root.children[(my_pos, d)]
+                    self.tree.search(2)
+                    return self.tree.best_move()
 
 
 class Node:
@@ -119,7 +140,10 @@ class Node:
         """
         # if the node is not visited, set the value as infinity. Nodes with no visits are on priority
         # (lambda: print("a"), lambda: print("b"))[test==true]()
-        return self.Q / self.N + sqrt(2 * log(self.parent.N) / self.N)  # exploitation + exploration
+        if self.N == 0:
+            return float('inf')
+        else:
+            return self.Q / self.N + sqrt(2 * log(self.parent.N) / self.N)  # exploitation + exploration
 
 
 class UctMctsAgent:
@@ -145,21 +169,22 @@ class UctMctsAgent:
         Search and update the search tree for a
         specified amount of time in seconds.
         """
-        start_time = time.clock()
+        start_time = time.time()
         num_rollouts = 0
 
         # do until we exceed our time budget
-        while time.clock() - start_time < time_budget:
+        while time.time() - start_time < time_budget:
             node, state = self.select_node()
-            turn = state.turn()
+            turn = state.turn
             outcome = self.roll_out(state)
             self.backup(node, turn, outcome)
             num_rollouts += 1
-        run_time = time.clock() - start_time
+        run_time = time.time() - start_time
         node_count = self.tree_size()
         self.run_time = run_time
         self.node_count = node_count
         self.num_rollouts = num_rollouts
+        print(run_time, node_count, num_rollouts)
 
     def select_node(self) -> tuple:
         """
@@ -176,7 +201,10 @@ class UctMctsAgent:
             max_nodes = [n for n in node.children.values()
                          if n.value == max_value]
             node = choice(max_nodes)
-            state.play(node.move)
+            r, c = node.move[0]
+            dir = node.move[1]
+            state.set_barrier(state.chess_board, r, c, dir)
+            state.my_pos = (r, c)
             # if some child node has not been explored select it before expanding
             # other children
             if node.N == 0:
@@ -187,6 +215,20 @@ class UctMctsAgent:
             node = choice(list(node.children.values()))
             state.play(node.move)
         return node, state
+
+    def tree_size(self) -> int:
+        """
+        Count nodes in tree by BFS.
+        """
+        Q = []
+        count = 0
+        Q.append(self.root)
+        while len(Q) != 0:
+            node = Q.pop(0)
+            count += 1
+            for child in node.children.values():
+                Q.append(child)
+        return count
 
     @staticmethod
     def expand(parent: Node, state) -> bool:
@@ -206,6 +248,42 @@ class UctMctsAgent:
         return True
 
     @staticmethod
+    def random_step( chess_board, my_pos, adv_pos, max_step):
+        # Moves (Up, Right, Down, Left)
+        ori_pos = deepcopy(my_pos)
+        moves = ((-1, 0), (0, 1), (1, 0), (0, -1))
+        steps = np.random.randint(0, max_step + 1)
+
+        # Random Walk
+        for _ in range(steps):
+            r, c = my_pos
+            dir = np.random.randint(0, 4)
+            m_r, m_c = moves[dir]
+            my_pos = (r + m_r, c + m_c)
+
+            # Special Case enclosed by Adversary
+            k = 0
+            while chess_board[r, c, dir] or my_pos == adv_pos:
+                k += 1
+                if k > 300:
+                    break
+                dir = np.random.randint(0, 4)
+                m_r, m_c = moves[dir]
+                my_pos = (r + m_r, c + m_c)
+
+            if k > 300:
+                my_pos = ori_pos
+                break
+
+        # Put Barrier
+        dir = np.random.randint(0, 4)
+        r, c = my_pos
+        while chess_board[r, c, dir]:
+            dir = np.random.randint(0, 4)
+
+        return my_pos, dir
+
+    @staticmethod
     def roll_out(state) -> int:
         """
         Simulate an entirely random game from the passed state and return the winning
@@ -215,8 +293,15 @@ class UctMctsAgent:
         Returns:
             int: winner of the game
         """
-
-        return state.simulation()
+        res = state.check_endgame()
+        while not res[0]:
+            move = state.random_step(state.chess_board,state.my_pos,state.adv_pos,state.max_step)
+            state.play(move)
+            res = state.check_endgame()
+        if res[1] == -1:
+            return 1 - state.turn
+        else:
+            return state.turn
 
     @staticmethod
     def backup(node: Node, turn: int, outcome: int) -> None:
@@ -250,6 +335,7 @@ class UctMctsAgent:
             return None
         # choose the move of the most simulated node breaking ties randomly
         max_value = max(self.root.children.values(), key=lambda n: n.N).N
+        print(max_value)
         max_nodes = [n for n in self.root.children.values() if n.N == max_value]
         bestchild = choice(max_nodes)
         return bestchild.move
@@ -267,23 +353,23 @@ class UctMctsAgent:
         return self.num_rollouts, self.node_count, self.run_time
 
 
-class Node:
-    def __init__(self, child, parent, score, times, move):
-        self.children = {}
-        self.parent = parent
-        self.score = score
-        self.times = times
-        self.move = move
-
-    def cal_UCT(self, explore: float = 0.5):
-        if self.times == 0:
-            return 0 if explore == 0 else float('inf')
-        else:
-            # print(self.score)
-            # print(self.times)
-            # print(self.parent.times)
-
-            return self.score / self.times + explore * sqrt(2) * sqrt(log(self.parent.times) / self.times)
+# class Node:
+#     def __init__(self, child, parent, score, times, move):
+#         self.children = {}
+#         self.parent = parent
+#         self.score = score
+#         self.times = times
+#         self.move = move
+#
+#     def cal_UCT(self, explore: float = 0.5):
+#         if self.times == 0:
+#             return 0 if explore == 0 else float('inf')
+#         else:
+#             # print(self.score)
+#             # print(self.times)
+#             # print(self.parent.times)
+#
+#             return self.score / self.times + explore * sqrt(2) * sqrt(log(self.parent.times) / self.times)
 
 
 class State:
@@ -308,35 +394,45 @@ class State:
             "l": 3,
         }
 
-    def simulation(self):
-        chess_board = self.chess_board
-        my_pos = self.my_pos
-        adv_pos = self.adv_pos
-        turn = self.turn
-        max_step = self.max_step
-        board = deepcopy(chess_board)
-        board_size = len(board[0])
-        res = self.check_endgame()
-        while not res[0]:
-            if turn == 0:
-                random = self.random_moves(board, my_pos, adv_pos, max_step)
-                my_pos = random[0]
-                my_dir = random[1]
-                self.set_barrier(board, my_pos[0], my_pos[1], my_dir)
-                # print("here")
-                turn = 1
-            elif turn == 1:
-                random = self.random_moves(board, adv_pos, my_pos, max_step)
-                adv_pos = random[0]
-                adv_dir = random[1]
-                self.set_barrier(board, adv_pos[0], adv_pos[1], adv_dir)
-                # print("there")
-                turn = 0
-            res = self.check_endgame(board, my_pos, adv_pos, max_step, board_size)
-            # print(res[0])
-            # print(my_pos)
-            # print(adv_pos)
-        return res[1]
+    def play(self, move):
+        pos, dir = move
+        r, c = pos
+        self.set_barrier(self.chess_board, r, c, dir)
+        self.my_pos = r, c
+        tmp = self.adv_pos
+        self.adv_pos = self.my_pos
+        self.my_pos = tmp
+        self.turn = 1 - self.turn
+
+    # def simulation(self):
+    #     chess_board = self.chess_board
+    #     my_pos = self.my_pos
+    #     adv_pos = self.adv_pos
+    #     turn = self.turn
+    #     max_step = self.max_step
+    #     board = deepcopy(chess_board)
+    #     board_size = len(board[0])
+    #     res = self.check_endgame()
+    #     while not res[0]:
+    #         if turn == 0:
+    #             random = self.random_moves(board, my_pos, adv_pos, max_step)
+    #             my_pos = random[0]
+    #             my_dir = random[1]
+    #             self.set_barrier(board, my_pos[0], my_pos[1], my_dir)
+    #             # print("here")
+    #             turn = 1
+    #         elif turn == 1:
+    #             random = self.random_moves(board, adv_pos, my_pos, max_step)
+    #             adv_pos = random[0]
+    #             adv_dir = random[1]
+    #             self.set_barrier(board, adv_pos[0], adv_pos[1], adv_dir)
+    #             # print("there")
+    #             turn = 0
+    #         res = self.check_endgame1(board, my_pos, adv_pos, max_step, board_size)
+    #         # print(res[0])
+    #         # print(my_pos)
+    #         # print(adv_pos)
+    #     return res[1]
 
     def get_all_steps(self):
         chess_board = self.chess_board
@@ -355,6 +451,7 @@ class State:
         return all_valids
 
     def set_barrier(self, chess_board, r, c, dir):
+        # chess_board = self.chess_board
         chess_board[int(r), int(c), int(dir)] = True
         move = self.moves[dir]
         chess_board[r + move[0], c + move[1], self.opposites[dir]] = True
@@ -512,6 +609,75 @@ class State:
             return True, 0
 
         if (p0_score - p1_score) < 0:
-            return True, 1
+            return True, -1
         else:
+            return True, 1
+
+    def check_endgame1(self, chess_board, my_pos, adv_pos, max_step, board_size):
+        """
+        Check if the game ends and compute the current score of the agents.
+        Returns
+        -------
+        is_endgame : bool
+            Whether the game ends.
+        player_1_score : int
+            The score of player 1.
+        player_2_score : int
+            The score of player 2.
+        """
+
+        # Union-Find
+        father = dict()
+        for r in range(board_size):
+            for c in range(board_size):
+                father[(r, c)] = (r, c)
+
+        def find(pos):
+            # print(board_size)
+            # print("fa pos", father[pos])
+            # print("pos", pos)
+            if father[pos] != pos:
+                father[pos] = find(father[pos])
+            return father[pos]
+
+        def union(pos1, pos2):
+            father[pos1] = pos2
+
+        for r in range(board_size):
+            for c in range(board_size):
+                for dir, move in enumerate(
+                        self.moves[1:3]
+                ):  # Only check down and right
+                    if chess_board[r, c, dir + 1]:
+                        continue
+                    pos_a = find((r, c))
+                    pos_b = find((r + move[0], c + move[1]))
+                    if pos_a != pos_b:
+                        union(pos_a, pos_b)
+
+        for r in range(board_size):
+            for c in range(board_size):
+                find((r, c))
+        p0_r = find(tuple(my_pos))
+        p1_r = find(tuple(adv_pos))
+        p0_score = list(father.values()).count(p0_r)
+        p1_score = list(father.values()).count(p1_r)
+        if p0_r == p1_r:
+            # print(1)
+            return False, 0
+        player_win = None
+        win_blocks = -1
+        if p0_score > p1_score:
+            player_win = 0
+            win_blocks = p0_score
+        elif p0_score < p1_score:
+            player_win = 1
+            win_blocks = p1_score
+        else:
+            player_win = -1  # Tie
             return True, 0
+
+        if (p0_score - p1_score) < 0:
+            return True, -1
+        else:
+            return True, 1
