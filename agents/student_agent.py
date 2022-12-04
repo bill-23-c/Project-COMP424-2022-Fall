@@ -67,7 +67,6 @@ class StudentAgent(Agent):
             pos, dire = self.tree.best_move()
             self.tree.root_state.play((pos, dire))
             self.tree.root = self.tree.root.children[(pos, dire)]
-            print(self.tree.root.children.keys())
             return pos, dire
         else:
             d = -1
@@ -88,10 +87,14 @@ class StudentAgent(Agent):
                     self.tree.root = self.tree.root.children[(pos, dire)]
                     return pos, dire
                 else:
+                    print("inherent from parent")
                     self.tree.root_state.play((adv_pos, d))
                     self.tree.root = self.tree.root.children[(adv_pos, d)]
                     self.tree.search(2)
-                    return self.tree.best_move()
+                    pos, dire = self.tree.best_move()
+                    self.tree.root_state.play((pos, dire))
+                    self.tree.root = self.tree.root.children[(pos, dire)]
+                    return pos, dire
 
 
 class Node:
