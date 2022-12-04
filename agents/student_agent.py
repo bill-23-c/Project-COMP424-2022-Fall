@@ -60,13 +60,14 @@ class StudentAgent(Agent):
         # # return my_pos, self.dir_map["u"]
         # return my_pos, direction
         #
-        if self.tree == None:
+        if self.tree is None:
             state = State(chess_board, my_pos, adv_pos, max_step, 0)
             self.tree = UctMctsAgent(state)
             self.tree.search(20)
             pos, dire = self.tree.best_move()
             self.tree.root_state.play((pos, dire))
-            self.tree.root = self.tree.root.children[(pos,dire)]
+            self.tree.root = self.tree.root.children[(pos, dire)]
+            print(self.tree.root.children.keys())
             return pos, dire
         else:
             d = -1
@@ -77,8 +78,9 @@ class StudentAgent(Agent):
             if d == -1:
                 print("impossible")
             else:
-                if self.tree.root.children.get((adv_pos, d)) == None:
-                    state = State(chess_board,my_pos,adv_pos,max_step,0)
+                if self.tree.root.children.get((adv_pos, d)) is None:
+                    print("not inherent from parent, creating new tree")
+                    state = State(chess_board, my_pos, adv_pos, max_step, 0)
                     self.tree.set_gamestate(state)
                     self.tree.search(2)
                     pos, dire = self.tree.best_move()
@@ -86,8 +88,8 @@ class StudentAgent(Agent):
                     self.tree.root = self.tree.root.children[(pos, dire)]
                     return pos, dire
                 else:
-                    self.tree.root_state.play((my_pos,d))
-                    self.tree.root = self.tree.root.children[(my_pos, d)]
+                    self.tree.root_state.play((adv_pos, d))
+                    self.tree.root = self.tree.root.children[(adv_pos, d)]
                     self.tree.search(2)
                     return self.tree.best_move()
 
@@ -201,10 +203,7 @@ class UctMctsAgent:
             max_nodes = [n for n in node.children.values()
                          if n.value == max_value]
             node = choice(max_nodes)
-            r, c = node.move[0]
-            dir = node.move[1]
-            state.set_barrier(state.chess_board, r, c, dir)
-            state.my_pos = (r, c)
+            state.play(node.move)
             # if some child node has not been explored select it before expanding
             # other children
             if node.N == 0:
@@ -248,42 +247,6 @@ class UctMctsAgent:
         return True
 
     @staticmethod
-    def random_step( chess_board, my_pos, adv_pos, max_step):
-        # Moves (Up, Right, Down, Left)
-        ori_pos = deepcopy(my_pos)
-        moves = ((-1, 0), (0, 1), (1, 0), (0, -1))
-        steps = np.random.randint(0, max_step + 1)
-
-        # Random Walk
-        for _ in range(steps):
-            r, c = my_pos
-            dir = np.random.randint(0, 4)
-            m_r, m_c = moves[dir]
-            my_pos = (r + m_r, c + m_c)
-
-            # Special Case enclosed by Adversary
-            k = 0
-            while chess_board[r, c, dir] or my_pos == adv_pos:
-                k += 1
-                if k > 300:
-                    break
-                dir = np.random.randint(0, 4)
-                m_r, m_c = moves[dir]
-                my_pos = (r + m_r, c + m_c)
-
-            if k > 300:
-                my_pos = ori_pos
-                break
-
-        # Put Barrier
-        dir = np.random.randint(0, 4)
-        r, c = my_pos
-        while chess_board[r, c, dir]:
-            dir = np.random.randint(0, 4)
-
-        return my_pos, dir
-
-    @staticmethod
     def roll_out(state) -> int:
         """
         Simulate an entirely random game from the passed state and return the winning
@@ -295,13 +258,13 @@ class UctMctsAgent:
         """
         res = state.check_endgame()
         while not res[0]:
-            move = state.random_step(state.chess_board,state.my_pos,state.adv_pos,state.max_step)
+            move = random_step(state.chess_board, state.my_pos, state.adv_pos, state.max_step)
             state.play(move)
             res = state.check_endgame()
-        if res[1] == -1:
-            return 1 - state.turn
-        else:
+        if res[1] != -1 and res[1] != 0:
             return state.turn
+        else:
+            return 1 - state.turn
 
     @staticmethod
     def backup(node: Node, turn: int, outcome: int) -> None:
@@ -681,3 +644,39 @@ class State:
             return True, -1
         else:
             return True, 1
+
+
+def random_step(chess_board, my_pos, adv_pos, max_step):
+    # Moves (Up, Right, Down, Left)
+    ori_pos = deepcopy(my_pos)
+    moves = ((-1, 0), (0, 1), (1, 0), (0, -1))
+    steps = np.random.randint(0, max_step + 1)
+
+    # Random Walk
+    for _ in range(steps):
+        r, c = my_pos
+        dir = np.random.randint(0, 4)
+        m_r, m_c = moves[dir]
+        my_pos = (r + m_r, c + m_c)
+
+        # Special Case enclosed by Adversary
+        k = 0
+        while chess_board[r, c, dir] or my_pos == adv_pos:
+            k += 1
+            if k > 300:
+                break
+            dir = np.random.randint(0, 4)
+            m_r, m_c = moves[dir]
+            my_pos = (r + m_r, c + m_c)
+
+        if k > 300:
+            my_pos = ori_pos
+            break
+
+    # Put Barrier
+    dir = np.random.randint(0, 4)
+    r, c = my_pos
+    while chess_board[r, c, dir]:
+        dir = np.random.randint(0, 4)
+
+    return my_pos, dir
